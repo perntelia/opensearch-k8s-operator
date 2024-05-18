@@ -1,0 +1,73 @@
+---
+apiVersion: opensearch.opster.io/v1
+kind: OpenSearchCluster
+metadata:
+  name: default-cluster
+  namespace: default
+spec:
+  general:
+    # Should also have this plugin @ version https://github.com/Aiven-Open/prometheus-exporter-plugin-for-opensearch/
+    version: &version "2.13.0"
+    httpPort: 9200
+    vendor: opensearch
+    serviceName: opensearch
+    drainDataNodes: true
+    monitoring:
+      enable: true
+      scrapeInterval: 10s
+      labels:
+        release: prom
+      tlsConfig:
+        # Opensearch CA isn't available to Prometheus.
+        # Ideally cert-manager can manage all this later.
+        insecureSkipVerify: true
+    pluginsList: ["repository-s3"]
+    setVMMaxMapCount: true
+  security:
+    tls:
+      http:
+        generate: true
+      transport:
+        generate: true
+  confMgmt:
+    smartScaler: true
+  dashboards:
+    version: *version
+    enable: true
+    replicas: 1
+    resources:
+      requests:
+         memory: 256Mi
+         cpu: 50m
+      limits:
+         memory: 1Gi
+         cpu: 500m
+  nodePools:
+    - component: masters
+      replicas: 3
+      diskSize: 4Gi
+      nodeSelector:
+      resources:
+         requests:
+            memory: 600Mi
+            cpu: 25m
+         limits:
+            memory: 800Mi
+            cpu: 1000m
+      roles:
+        - cluster_manager
+        - ingest
+    - component: nodes
+      replicas: 3
+      diskSize: 40Gi
+      nodeSelector:
+      resources:
+         requests:
+            memory: 2Gi
+            cpu: 25m
+         limits:
+            memory: 2Gi
+            cpu: 1000m
+      roles:
+        - data
+

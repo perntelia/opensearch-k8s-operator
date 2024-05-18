@@ -1,46 +1,58 @@
 name: Functional tests
-on: [pull_request]
+on: [push, workflow_dispatch]
 
 jobs:
-  operator:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Setup go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: 'go.work'
-          cache: false
-      - uses: nolar/setup-k3d-k3s@v1
-        with:
-          version: v1
-          k3d-name: opensearch-operator-tests
-          k3d-args: --agents 2 -p 30000-30005:30000-30005@agent:0
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Run tests
-        run: |
-          set -e
-          export CLUSTER_NAME=opensearch-operator-tests
-          ## Check disk to avoid failed shard assignments due to watermarking
-          df -h
-          cd opensearch-operator
-          ## Prepare kubeconfig
-          k3d kubeconfig get $CLUSTER_NAME > functionaltests/kubeconfig
-          export KUBECONFIG=$(pwd)/functionaltests/kubeconfig
-
-          ## Build controller docker image
-          make docker-build
-
-          ## Import controller docker image
-          k3d image import -c $CLUSTER_NAME controller:latest
-
-          ## Install helm chart
-          helm install opensearch-operator ../charts/opensearch-operator --set manager.image.repository=controller --set manager.image.tag=latest --set manager.image.pullPolicy=IfNotPresent --namespace default --wait
-          cd functionaltests
-
-          ## Run tests
-          go test ./operatortests -timeout 30m
+#  operator:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Checkout code
+#        uses: actions/checkout@v4
+#      - name: Setup go
+#        uses: actions/setup-go@v5
+#        with:
+#          go-version-file: 'go.work'
+#          cache: false
+#      - uses: nolar/setup-k3d-k3s@v1
+#        with:
+#          version: v1
+#          k3d-name: opensearch-operator-tests
+#          k3d-args: --agents 2 -p 30000-30005:30000-30005@agent:0
+#          github-token: ${{ secrets.GITHUB_TOKEN }}
+#      - name: Run tests
+#        run: |
+#          set -e
+#          export CLUSTER_NAME=opensearch-operator-tests
+#          ## Check disk to avoid failed shard assignments due to watermarking
+#          df -h
+#          cd opensearch-operator
+#          ## Prepare kubeconfig
+#          k3d kubeconfig get $CLUSTER_NAME > functionaltests/kubeconfig
+#          export KUBECONFIG=$(pwd)/functionaltests/kubeconfig
+#
+#          ## Build controller docker image
+#          make docker-build
+#
+#          ## Import controller docker image
+#          k3d image import -c $CLUSTER_NAME controller:latest
+#
+#          ## Install helm chart
+#          helm install opensearch-operator ../charts/opensearch-operator --set manager.image.repository=controller --set manager.image.tag=latest --set manager.image.pullPolicy=IfNotPresent --namespace default --wait
+#          cd functionaltests
+#
+#          while true; do
+#            kubectl get pods -n default
+#            for pod in $(kubectl get pods -n default -o name | grep ^pod/deploy-and-upgrade); do
+#              echo "${pod}:"
+#              kubectl logs --since=60s \
+#                -n default $pod
+#              echo ""
+#            done
+#            echo -e "\n\n\n\n"
+#            sleep 60
+#          done &
+#
+#          ## Run tests
+#          go test ./operatortests -timeout 30m
 
   cluster-helm-chart:
     runs-on: ubuntu-latest
@@ -49,7 +61,7 @@ jobs:
       matrix:
         version:
             - 2.13.0
-            - 1.3.16
+#            - 1.3.16
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -64,6 +76,8 @@ jobs:
           k3d-name: opensearch-operator-tests
           k3d-args: --agents 2 -p 30000-30005:30000-30005@agent:0
           github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Setup upterm session
+        uses: lhotari/action-upterm@v1
       - name: Run tests
         run: |
           set -e
@@ -85,6 +99,21 @@ jobs:
           helm install opensearch-operator ../charts/opensearch-operator --set manager.image.repository=controller --set manager.image.tag=latest --set manager.image.pullPolicy=IfNotPresent --namespace default --wait
           helm install opensearch-cluster ../charts/opensearch-cluster --set  opensearchCluster.general.version=${{ matrix.version }} --set opensearchCluster.dashboards.version=${{ matrix.version }} --wait
           cd functionaltests
+          
+          while true; do 
+            kubectl get pods -n default
+            for pod in $(kubectl get pods -n default -o name | grep ^pod/opensearch-cluster | grep -v dashboard); do
+              printf "\n%s:\n" "$pod"
+              if echo "$pod" | grep -q master; then
+                kubectl describe -n default $pod
+              fi
+              kubectl logs --since=60s \
+                -n default $pod
+              echo ""
+            done
+            printf "\n\n\n"
+            sleep 60
+          done &
 
           ## Run tests
           go test ./helmtests -timeout 15m

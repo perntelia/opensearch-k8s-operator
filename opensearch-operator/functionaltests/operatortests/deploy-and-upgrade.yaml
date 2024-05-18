@@ -37,7 +37,7 @@ spec:
             cpu: "500m"
          limits:
             memory: "2Gi"
-            cpu: "500m"
+#            cpu: "500m"
       roles:
         - "master"
         - "data"

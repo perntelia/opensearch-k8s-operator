@@ -40,7 +40,7 @@ opensearchCluster:
           cpu: "500m"
         limits:
           memory: "2Gi"
-          cpu: "500m"
+#          cpu: "500m"
   security:
     tls:
       transport:
